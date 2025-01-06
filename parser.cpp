@@ -11,7 +11,7 @@
 
 using namespace std;
 
-#include "new_core.hpp"
+#include "core.hpp"
 #include "parser.hpp"
 
 // A helper: big pattern for "64-bit registers" (r0..r15 plus classic ones)
