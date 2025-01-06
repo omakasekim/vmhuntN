@@ -20,22 +20,48 @@ typedef uint64_t ADDR64;
 // Address range (start, end)
 typedef pair<ADDR64, ADDR64> AddrRange;
 
-// Enum of registers supporting both 64-bit and 32-bit registers, FPU, segments, and vector registers
+// Enum of registers supporting various sizes and types
 enum Register {
-    RAX, RBX, RCX, RDX,         // 64-bit general-purpose registers
+    // 64-bit General Purpose Registers
+    RAX, RBX, RCX, RDX,
     RSI, RDI, RSP, RBP,
-    EAX, EBX, ECX, EDX,         // 32-bit general-purpose registers
+    R8, R9, R10, R11,
+    R12, R13, R14, R15,
+
+    // 32-bit General Purpose Registers
+    EAX, EBX, ECX, EDX,
     ESI, EDI, ESP, EBP,
-    ST0, ST1, ST2, ST3,         // FPU registers
+    R8D, R9D, R10D, R11D,
+    R12D, R13D, R14D, R15D,
+
+    // 16-bit General Purpose Registers
+    AX, BX, CX, DX,
+    SI, DI, BP, SP,
+    R8W, R9W, R10W, R11W,
+    R12W, R13W, R14W, R15W,
+
+    // 8-bit General Purpose Registers
+    AL, BL, CL, DL,
+    AH, BH, CH, DH,
+    SPL, BPL, SIL, DIL,
+    R8B, R9B, R10B, R11B,
+    R12B, R13B, R14B, R15B,
+
+    // FPU Registers
+    ST0, ST1, ST2, ST3,
     ST4, ST5,
-    CS, DS, ES, FS, GS,         // Segment registers
-    SS,
+
+    // Segment Registers
+    CS, DS, ES, FS, GS, SS,
+
+    // Vector Registers
     XMM0, XMM1, XMM2, XMM3, XMM4, XMM5, XMM6, XMM7,
     XMM8, XMM9, XMM10, XMM11, XMM12, XMM13, XMM14, XMM15,
     YMM0, YMM1, YMM2, YMM3, YMM4, YMM5, YMM6, YMM7,
     YMM8, YMM9, YMM10, YMM11, YMM12, YMM13, YMM14, YMM15,
     ZMM0, ZMM1, ZMM2, ZMM3, ZMM4, ZMM5, ZMM6, ZMM7,
     ZMM8, ZMM9, ZMM10, ZMM11, ZMM12, ZMM13, ZMM14, ZMM15,
+
     UNK                         // Unknown register
 };
 
@@ -50,6 +76,14 @@ inline string reg2string(Register reg) {
     case RDI: return "rdi";
     case RSP: return "rsp";
     case RBP: return "rbp";
+    case R8:  return "r8";
+    case R9:  return "r9";
+    case R10: return "r10";
+    case R11: return "r11";
+    case R12: return "r12";
+    case R13: return "r13";
+    case R14: return "r14";
+    case R15: return "r15";
 
     case EAX: return "eax";
     case EBX: return "ebx";
@@ -59,6 +93,52 @@ inline string reg2string(Register reg) {
     case EDI: return "edi";
     case ESP: return "esp";
     case EBP: return "ebp";
+    case R8D: return "r8d";
+    case R9D: return "r9d";
+    case R10D: return "r10d";
+    case R11D: return "r11d";
+    case R12D: return "r12d";
+    case R13D: return "r13d";
+    case R14D: return "r14d";
+    case R15D: return "r15d";
+
+    case AX: return "ax";
+    case BX: return "bx";
+    case CX: return "cx";
+    case DX: return "dx";
+    case SI: return "si";
+    case DI: return "di";
+    case BP: return "bp";
+    case SP: return "sp";
+    case R8W: return "r8w";
+    case R9W: return "r9w";
+    case R10W: return "r10w";
+    case R11W: return "r11w";
+    case R12W: return "r12w";
+    case R13W: return "r13w";
+    case R14W: return "r14w";
+    case R15W: return "r15w";
+
+    case AL: return "al";
+    case BL: return "bl";
+    case CL: return "cl";
+    case DL: return "dl";
+    case AH: return "ah";
+    case BH: return "bh";
+    case CH: return "ch";
+    case DH: return "dh";
+    case SPL: return "spl";
+    case BPL: return "bpl";
+    case SIL: return "sil";
+    case DIL: return "dil";
+    case R8B: return "r8b";
+    case R9B: return "r9b";
+    case R10B: return "r10b";
+    case R11B: return "r11b";
+    case R12B: return "r12b";
+    case R13B: return "r13b";
+    case R14B: return "r14b";
+    case R15B: return "r15b";
 
     case ST0: return "st0";
     case ST1: return "st1";
@@ -144,6 +224,14 @@ inline Register reg2enum(const string &regStr) {
     if (reg == "rdi") return Register::RDI;
     if (reg == "rsp") return Register::RSP;
     if (reg == "rbp") return Register::RBP;
+    if (reg == "r8")  return Register::R8;
+    if (reg == "r9")  return Register::R9;
+    if (reg == "r10") return Register::R10;
+    if (reg == "r11") return Register::R11;
+    if (reg == "r12") return Register::R12;
+    if (reg == "r13") return Register::R13;
+    if (reg == "r14") return Register::R14;
+    if (reg == "r15") return Register::R15;
 
     if (reg == "eax") return Register::EAX;
     if (reg == "ebx") return Register::EBX;
@@ -153,6 +241,52 @@ inline Register reg2enum(const string &regStr) {
     if (reg == "edi") return Register::EDI;
     if (reg == "esp") return Register::ESP;
     if (reg == "ebp") return Register::EBP;
+    if (reg == "r8d")  return Register::R8D;
+    if (reg == "r9d")  return Register::R9D;
+    if (reg == "r10d") return Register::R10D;
+    if (reg == "r11d") return Register::R11D;
+    if (reg == "r12d") return Register::R12D;
+    if (reg == "r13d") return Register::R13D;
+    if (reg == "r14d") return Register::R14D;
+    if (reg == "r15d") return Register::R15D;
+
+    if (reg == "ax") return Register::AX;
+    if (reg == "bx") return Register::BX;
+    if (reg == "cx") return Register::CX;
+    if (reg == "dx") return Register::DX;
+    if (reg == "si") return Register::SI;
+    if (reg == "di") return Register::DI;
+    if (reg == "bp") return Register::BP;
+    if (reg == "sp") return Register::SP;
+    if (reg == "r8w")  return Register::R8W;
+    if (reg == "r9w")  return Register::R9W;
+    if (reg == "r10w") return Register::R10W;
+    if (reg == "r11w") return Register::R11W;
+    if (reg == "r12w") return Register::R12W;
+    if (reg == "r13w") return Register::R13W;
+    if (reg == "r14w") return Register::R14W;
+    if (reg == "r15w") return Register::R15W;
+
+    if (reg == "al") return Register::AL;
+    if (reg == "bl") return Register::BL;
+    if (reg == "cl") return Register::CL;
+    if (reg == "dl") return Register::DL;
+    if (reg == "ah") return Register::AH;
+    if (reg == "bh") return Register::BH;
+    if (reg == "ch") return Register::CH;
+    if (reg == "dh") return Register::DH;
+    if (reg == "spl") return Register::SPL;
+    if (reg == "bpl") return Register::BPL;
+    if (reg == "sil") return Register::SIL;
+    if (reg == "dil") return Register::DIL;
+    if (reg == "r8b")  return Register::R8B;
+    if (reg == "r9b")  return Register::R9B;
+    if (reg == "r10b") return Register::R10B;
+    if (reg == "r11b") return Register::R11B;
+    if (reg == "r12b") return Register::R12B;
+    if (reg == "r13b") return Register::R13B;
+    if (reg == "r14b") return Register::R14B;
+    if (reg == "r15b") return Register::R15B;
 
     if (reg == "st0") return Register::ST0;
     if (reg == "st1") return Register::ST1;
@@ -196,7 +330,7 @@ struct Operand {
     string field[5];     // Fields for operand decoding (e.g., reg name, displacement, etc.)
 
     // Constructors
-    Operand() : ty(UNK), tag(0), bit(0), issegaddr(false), segreg(""), field{"", "", "", "", ""} {}
+    Operand() : ty(IMM), tag(0), bit(0), issegaddr(false), segreg(""), field{"", "", "", "", ""} {}
     Operand(Type type, int bitSize, const string& fld0)
         : ty(type), tag(0), bit(bitSize), issegaddr(false), segreg(""), field{fld0, "", "", "", ""} {}
 };
@@ -209,28 +343,10 @@ struct Parameter {
     ADDR64 idx;     // If MEM, this could be the address. If IMM, the immediate value
 
     // Operators
-    bool operator==(const Parameter &other) const {
-        return ty == other.ty && reg == other.reg && idx == other.idx;
-    }
-    bool operator<(const Parameter &other) const {
-        if (ty != other.ty)
-            return ty < other.ty;
-        if (reg != other.reg)
-            return reg < other.reg;
-        return idx < other.idx;
-    }
-    bool isIMM() const {
-        return ty == IMM;
-    }
-    void show() const {
-        if (ty == IMM) {
-            printf("IMM: 0x%llx\n", (unsigned long long)idx);
-        } else if (ty == REG) {
-            printf("REG: %s\n", reg2string(reg).c_str());
-        } else if (ty == MEM) {
-            printf("MEM: 0x%llx\n", (unsigned long long)idx);
-        }
-    }
+    bool operator==(const Parameter& other) const;
+    bool operator<(const Parameter& other) const;
+    bool isIMM() const;
+    void show() const;
 };
 
 // A single instruction in the trace
@@ -267,86 +383,5 @@ struct Inst {
 
 // A type alias for some mapping structure used in your project
 typedef pair<map<int, int>, map<int, int>> FullMap;
-
-// Implementation of helper methods within Inst
-inline void Inst::addsrc(Parameter::Type t, string s) {
-    Parameter p;
-    p.ty = t;
-    if (t == Parameter::REG) {
-        p.reg = reg2enum(s);
-    } else if (t == Parameter::IMM) {
-        p.idx = std::stoull(s, nullptr, 16);
-    }
-    src.push_back(p);
-}
-
-inline void Inst::addsrc(Parameter::Type t, AddrRange a) {
-    Parameter p;
-    p.ty = t;
-    if (t == Parameter::MEM) {
-        p.idx = a.first; // Or handle as needed
-    }
-    src.push_back(p);
-}
-
-inline void Inst::adddst(Parameter::Type t, string s) {
-    Parameter p;
-    p.ty = t;
-    if (t == Parameter::REG) {
-        p.reg = reg2enum(s);
-    } else if (t == Parameter::IMM) {
-        p.idx = std::stoull(s, nullptr, 16);
-    }
-    dst.push_back(p);
-}
-
-inline void Inst::adddst(Parameter::Type t, AddrRange a) {
-    Parameter p;
-    p.ty = t;
-    if (t == Parameter::MEM) {
-        p.idx = a.first; // Or handle as needed
-    }
-    dst.push_back(p);
-}
-
-inline void Inst::addsrc2(Parameter::Type t, string s) {
-    Parameter p;
-    p.ty = t;
-    if (t == Parameter::REG) {
-        p.reg = reg2enum(s);
-    } else if (t == Parameter::IMM) {
-        p.idx = std::stoull(s, nullptr, 16);
-    }
-    src2.push_back(p);
-}
-
-inline void Inst::addsrc2(Parameter::Type t, AddrRange a) {
-    Parameter p;
-    p.ty = t;
-    if (t == Parameter::MEM) {
-        p.idx = a.first; // Or handle as needed
-    }
-    src2.push_back(p);
-}
-
-inline void Inst::adddst2(Parameter::Type t, string s) {
-    Parameter p;
-    p.ty = t;
-    if (t == Parameter::REG) {
-        p.reg = reg2enum(s);
-    } else if (t == Parameter::IMM) {
-        p.idx = std::stoull(s, nullptr, 16);
-    }
-    dst2.push_back(p);
-}
-
-inline void Inst::adddst2(Parameter::Type t, AddrRange a) {
-    Parameter p;
-    p.ty = t;
-    if (t == Parameter::MEM) {
-        p.idx = a.first; // Or handle as needed
-    }
-    dst2.push_back(p);
-}
 
 #endif // CORE_HPP
