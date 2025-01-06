@@ -1,4 +1,3 @@
-// main.cpp (vmextract.cpp)
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -50,15 +49,15 @@ static const string jmpInstrName[33] = {
 /*
  * We'll store jump-opcode IDs and an instruction-enumeration map globally.
  */
-static set<int> jmpset;          // Changed from pointer to actual object
-static map<string, int> instenum; // Changed from pointer to actual object
+static set<int>*         jmpset    = nullptr;  
+static map<string,int>*  instenum  = nullptr;
 
 /*
  * Return the mnemonic string for a given numeric opcode.
  */
-string getOpcName(int opc, const map<string, int>& m)
+string getOpcName(int opc, map<string,int>* m)
 {
-    for (const auto &kv : m) {
+    for (auto &kv : *m) {
         if (kv.second == opc) {
             return kv.first;
         }
@@ -69,16 +68,16 @@ string getOpcName(int opc, const map<string, int>& m)
 /*
  * Print instructions (for debugging).
  */
-void printInstlist(const list<Inst>& L, const map<string, int>& m)
+void printInstlist(list<Inst>* L, map<string,int>* m)
 {
-    for (const auto &ins : L) {
+    for (auto &ins : *L) {
         cout << ins.id << " "
              << hex << ins.addrn << " "
              << ins.addr << " "
              << ins.opcstr << " "
              << getOpcName(ins.opc, m) << " "
              << dec << ins.oprnum << endl;
-        for (const auto &op : ins.oprs) {
+        for (auto &op : ins.oprs) {
             cout << op << endl;
         }
     }
@@ -87,25 +86,21 @@ void printInstlist(const list<Inst>& L, const map<string, int>& m)
 /*
  * Build a function map (placeholder logic).
  */
-map<uint64_t, list<FuncBody*>*> buildFuncList(const list<Inst>& L)
+map<uint64_t, list<FuncBody*>*>* buildFuncList(list<Inst>* L)
 {
-    map<uint64_t, list<FuncBody*>*> funcmap;
-    stack<list<Inst>::const_iterator> stk;
+    auto* funcmap = new map<uint64_t, list<FuncBody*>*>;
+    stack<list<Inst>::iterator> stk;
 
-    for (auto it = L.begin(); it != L.end(); ++it) {
+    for (auto it = L->begin(); it != L->end(); ++it) {
         if (it->opcstr == "call") {
             // push the iterator
             stk.push(it);
             // see if function is in the map
-            auto pos = funcmap.find(it->addrn);
-            if (pos == funcmap.end()) {
+            auto pos = funcmap->find(it->addrn);
+            if (pos == funcmap->end()) {
                 // parse call operand (hex) as 64-bit
-                if (!it->oprs.empty() && ishex(it->oprs[0])) {
-                    uint64_t calladdr = stoull(it->oprs[0], nullptr, 16);
-                    funcmap[calladdr] = nullptr;
-                } else {
-                    cerr << "[buildFuncList] Invalid call operand at instruction ID " << it->id << endl;
-                }
+                uint64_t calladdr = stoull(it->oprs[0], nullptr, 16);
+                (*funcmap)[calladdr] = nullptr;
             }
         }
         else if (it->opcstr == "ret") {
@@ -120,9 +115,9 @@ map<uint64_t, list<FuncBody*>*> buildFuncList(const list<Inst>& L)
 /*
  * Print only the keys in the function map.
  */
-void printFuncmap(const map<uint64_t, list<FuncBody*>*>& funcmap)
+void printFuncmap(map<uint64_t, list<FuncBody*>*>* funcmap)
 {
-    for (const auto &kv : funcmap) {
+    for (auto &kv : *funcmap) {
         cout << hex << kv.first << endl;
     }
 }
@@ -130,12 +125,12 @@ void printFuncmap(const map<uint64_t, list<FuncBody*>*>& funcmap)
 /*
  * Build a map (mnemonic -> unique int).
  */
-map<string, int> buildOpcodeMap(const list<Inst>& L)
+map<string,int>* buildOpcodeMap(list<Inst>* L)
 {
-    map<string, int> mp;
-    for (const auto &ins : L) {
-        if (mp.find(ins.opcstr) == mp.end()) {
-            mp[ins.opcstr] = static_cast<int>(mp.size()) + 1;
+    auto* mp = new map<string,int>;
+    for (auto &ins : *L) {
+        if (mp->find(ins.opcstr) == mp->end()) {
+            (*mp)[ins.opcstr] = (int)mp->size() + 1;
         }
     }
     return mp;
@@ -144,10 +139,10 @@ map<string, int> buildOpcodeMap(const list<Inst>& L)
 /*
  * Lookup numeric opcode from a mnemonic (returns 0 if not found).
  */
-int getOpc(const string &s, const map<string, int>& m)
+int getOpc(const string &s, map<string,int>* m)
 {
-    auto it = m.find(s);
-    if (it != m.end()) {
+    auto it = m->find(s);
+    if (it != m->end()) {
         return it->second;
     }
     return 0;
@@ -156,21 +151,21 @@ int getOpc(const string &s, const map<string, int>& m)
 /*
  * Check if integer opcode i is in the jump set.
  */
-bool isjump(int i)
+bool isjump(int i, set<int>* jumpset)
 {
-    return jmpset.find(i) != jmpset.end();
+    return (jumpset->find(i) != jumpset->end());
 }
 
 /*
  * Count how many indirect jumps by checking if operand[0] is not IMM.
  */
-void countindjumps(const list<Inst>& L)
+void countindjumps(list<Inst>* L)
 {
     int indjumpnum = 0;
-    for (const auto &ins : L) {
-        if (isjump(ins.opc)) {
+    for (auto &ins : *L) {
+        if (isjump(ins.opc, jmpset)) {
             // If operand[0] is not IMM => indirect jump
-            if (ins.oprd[0].ty != Operand::IMM) { // Corrected: Operand accessed by value
+            if (ins.oprd[0]->ty != OperandType::IMM) {
                 ++indjumpnum;
                 cout << ins.addr << "\t" << ins.opcstr << " " << ins.oprs[0] << endl;
             }
@@ -185,12 +180,12 @@ void countindjumps(const list<Inst>& L)
  * 
  * In 64-bit, there's no pushad/popad, so we omit them.
  */
-void peephole(list<Inst>& L, const map<string, int>& m)
+void peephole(list<Inst>* L)
 {
-    auto it = L.begin();
-    while (it != L.end()) {
-        auto nxt = next(it);
-        if (nxt == L.end()) {
+    auto it = L->begin();
+    while (it != L->end()) {
+        auto nxt = std::next(it);
+        if (nxt == L->end()) {
             break;
         }
         bool erased = false;
@@ -200,10 +195,10 @@ void peephole(list<Inst>& L, const map<string, int>& m)
              && !it->oprs.empty() && !nxt->oprs.empty()
              && it->oprs[0] == nxt->oprs[0]) )
         {
-            nxt = L.erase(nxt);
-            it  = L.erase(it);
+            nxt = L->erase(nxt);
+            it  = L->erase(it);
             erased = true;
-            if (it != L.begin() && it != L.end()) {
+            if (it != L->begin() && it != L->end()) {
                 --it;
             }
         }
@@ -211,10 +206,10 @@ void peephole(list<Inst>& L, const map<string, int>& m)
                   && !it->oprs.empty() && !nxt->oprs.empty()
                   && it->oprs[0] == nxt->oprs[0]) )
         {
-            nxt = L.erase(nxt);
-            it  = L.erase(it);
+            nxt = L->erase(nxt);
+            it  = L->erase(it);
             erased = true;
-            if (it != L.begin() && it != L.end()) {
+            if (it != L->begin() && it != L->end()) {
                 --it;
             }
         }
@@ -223,10 +218,10 @@ void peephole(list<Inst>& L, const map<string, int>& m)
                   && it->oprs[0] == nxt->oprs[0]
                   && it->oprs[1] == nxt->oprs[1]) )
         {
-            nxt = L.erase(nxt);
-            it  = L.erase(it);
+            nxt = L->erase(nxt);
+            it  = L->erase(it);
             erased = true;
-            if (it != L.begin() && it != L.end()) {
+            if (it != L->begin() && it != L->end()) {
                 --it;
             }
         }
@@ -235,10 +230,10 @@ void peephole(list<Inst>& L, const map<string, int>& m)
                   && it->oprs[0] == nxt->oprs[0]
                   && it->oprs[1] == nxt->oprs[1]) )
         {
-            nxt = L.erase(nxt);
-            it  = L.erase(it);
+            nxt = L->erase(nxt);
+            it  = L->erase(it);
             erased = true;
-            if (it != L.begin() && it != L.end()) {
+            if (it != L->begin() && it != L->end()) {
                 --it;
             }
         }
@@ -246,10 +241,10 @@ void peephole(list<Inst>& L, const map<string, int>& m)
                   && !it->oprs.empty() && !nxt->oprs.empty()
                   && it->oprs[0] == nxt->oprs[0]) )
         {
-            nxt = L.erase(nxt);
-            it  = L.erase(it);
+            nxt = L->erase(nxt);
+            it  = L->erase(it);
             erased = true;
-            if (it != L.begin() && it != L.end()) {
+            if (it != L->begin() && it != L->end()) {
                 --it;
             }
         }
@@ -257,10 +252,10 @@ void peephole(list<Inst>& L, const map<string, int>& m)
                   && !it->oprs.empty() && !nxt->oprs.empty()
                   && it->oprs[0] == nxt->oprs[0]) )
         {
-            nxt = L.erase(nxt);
-            it  = L.erase(it);
+            nxt = L->erase(nxt);
+            it  = L->erase(it);
             erased = true;
-            if (it != L.begin() && it != L.end()) {
+            if (it != L->begin() && it != L->end()) {
                 --it;
             }
         }
@@ -295,15 +290,8 @@ list<pair<ctxswitch, ctxswitch>> ctxswh;
 bool isreg(const string &s)
 {
     static const set<string> gprs64 = {
-        "rax","rbx","rcx","rdx","rsi","rdi","rbp","rsp",
-        "r8","r9","r10","r11","r12","r13","r14","r15",
-        "rip",
-        "xmm0","xmm1","xmm2","xmm3","xmm4","xmm5","xmm6","xmm7",
-        "xmm8","xmm9","xmm10","xmm11","xmm12","xmm13","xmm14","xmm15",
-        "ymm0","ymm1","ymm2","ymm3","ymm4","ymm5","ymm6","ymm7",
-        "ymm8","ymm9","ymm10","ymm11","ymm12","ymm13","ymm14","ymm15",
-        "zmm0","zmm1","zmm2","zmm3","zmm4","zmm5","zmm6","zmm7",
-        "zmm8","zmm9","zmm10","zmm11","zmm12","zmm13","zmm14","zmm15"
+        "rax","rbx","rcx","rdx","rsi","rdi","rbp","rsp"
+	,"r8","r9","r10","r11","r12","r13","r14","r15"
     };
     return (gprs64.find(s) != gprs64.end());
 }
@@ -359,19 +347,16 @@ bool chkpop(list<Inst>::iterator i1, list<Inst>::iterator i2)
  * Search the instruction list L and extract "VM" snippets:
  * sequences of 7 pushes or 7 pops in a row.
  */
-void vmextract(list<Inst>& L)
+void vmextract(list<Inst>* L)
 {
     // We'll look for exactly 7 consecutive pushes or pops.
     // If you want a different count, change "7" to something else.
-    const int VM_COUNT = 7;
-
-    for (auto it = L.begin(); it != L.end(); ++it) {
+    for (auto it = L->begin(); it != L->end(); ++it) {
         // Ensure we have at least 7 instructions from [it..end).
-        if (distance(it, L.end()) < VM_COUNT) {
+        if (std::distance(it, L->end()) < 7) {
             break; // not enough instructions
         }
-        auto it7 = it;
-        advance(it7, VM_COUNT);
+        auto it7 = std::next(it, 7);
 
         // Check 7 pushes
         if (chkpush(it, it7)) {
@@ -380,13 +365,10 @@ void vmextract(list<Inst>& L)
             cs.end   = it7;
             // Assume ctxreg[6] is 'rsp' if your trace sets that
             // For a real 64-bit code, it might be index 7 or so, adjust if needed
-            // Ensure that ctxreg index corresponds to 'rsp'
             cs.sd    = it7->ctxreg[6];  // 64-bit stack pointer
             ctxsave.push_back(cs);
-            cout << "[vmextract] push found at instruction ID " << it->id << " (" << it->addr << ")\n";
-            // Skip the next 6 instructions as they are part of this VM snippet
-            it = it7;
-            continue;
+            cout << "[vmextract] push found:\n"
+                 << it->id << " " << it->addr << " " << it->assembly << endl;
         }
         // Check 7 pops
         else if (chkpop(it, it7)) {
@@ -395,20 +377,18 @@ void vmextract(list<Inst>& L)
             cs.end   = it7;
             cs.sd    = it->ctxreg[6];
             ctxrestore.push_back(cs);
-            cout << "[vmextract] pop found at instruction ID " << it->id << " (" << it->addr << ")\n";
-            // Skip the next 6 instructions as they are part of this VM snippet
-            it = it7;
-            continue;
+            cout << "[vmextract] pop found:\n"
+                 << it->id << " " << it->addr << " " << it->assembly << endl;
         }
     }
 
     // Pair up saves and restores by matching sd
-    for (const auto &sv : ctxsave) {
-        for (const auto &rs : ctxrestore) {
+    for (auto &sv : ctxsave) {
+        for (auto &rs : ctxrestore) {
             if (sv.sd == rs.sd) {
-                ctxswh.emplace_back(make_pair(sv, rs));
-                // If you only want to pair each save with its first matching restore, uncomment the next line
-                // break;
+                ctxswh.push_back({sv, rs});
+                // If you only want to pair each save with its first matching restore, 
+                // add a "break;" here
             }
         }
     }
@@ -417,10 +397,10 @@ void vmextract(list<Inst>& L)
 /*
  * Write the extracted VM snippets to separate files (vm1.txt, vm2.txt, etc.).
  */
-void outputvm(const list<pair<ctxswitch, ctxswitch>>& ctxswh)
+void outputvm(list<pair<ctxswitch, ctxswitch>>* ctxswh)
 {
     int n = 1;
-    for (const auto &pairCS : ctxswh) {
+    for (auto &pairCS : *ctxswh) {
         auto i1 = pairCS.first.begin;
         auto i2 = pairCS.second.end;
         string vmfile = "vm" + to_string(n++) + ".txt";
@@ -434,15 +414,14 @@ void outputvm(const list<pair<ctxswitch, ctxswitch>>& ctxswh)
             fprintf(fp, "%s;%s;", it->addr.c_str(), it->assembly.c_str());
             // print context registers
             for (int j = 0; j < 8; ++j) {
-                fprintf(fp, "0x%llx,", static_cast<unsigned long long>(it->ctxreg[j]));
+                fprintf(fp, "%llx,", (unsigned long long)it->ctxreg[j]);
             }
             // print read/write addresses
-            fprintf(fp, "0x%llx,0x%llx\n",
-                    static_cast<unsigned long long>(it->raddr),
-                    static_cast<unsigned long long>(it->waddr));
+            fprintf(fp, "%llx,%llx\n",
+                    (unsigned long long)it->raddr,
+                    (unsigned long long)it->waddr);
         }
         fclose(fp);
-        cout << "[outputvm] Written VM snippet to " << vmfile << endl;
     }
 }
 
@@ -497,31 +476,32 @@ class CFG {
 
 public:
     CFG() {}
-    CFG(const list<Inst>& L);
+    CFG(list<Inst>* L);
     void checkConsist();
     void showCFG();
     void outputDot();
     void outputSimpleDot();
-    void showTrace(const list<Inst>& L);
+    void showTrace(list<Inst>* L);
     void compressCFG();
 };
 
 /*
  * Build opcode map, fill in numeric opcodes in Inst, build jump set.
  */
-void preprocess(list<Inst>& L)
+void preprocess(list<Inst>* L)
 {
     // 1) Build opcode map
     instenum = buildOpcodeMap(L);
     // 2) Fill in numeric opcodes
-    for (auto &ins : L) {
+    for (auto &ins : *L) {
         ins.opc = getOpc(ins.opcstr, instenum);
     }
     // 3) Build the jump set
-    for (const auto &mn : jmpInstrName) {
+    jmpset = new set<int>;
+    for (auto &mn : jmpInstrName) {
         int code = getOpc(mn, instenum);
         if (code != 0) {
-            jmpset.insert(code);
+            jmpset->insert(code);
         }
     }
 }
@@ -543,27 +523,27 @@ int main(int argc, char** argv)
     }
 
     // parseTrace should store 64-bit addresses in Inst::addrn, etc.
-    parseTrace(infile, instlist); // Changed to pass by reference
+    parseTrace(&infile, &instlist);
     infile.close();
 
     // Convert string operands -> structured 'Operand'
     parseOperand(instlist.begin(), instlist.end());
 
     // Build opcode map, fill in numeric opcodes, build jump set
-    preprocess(instlist);
+    preprocess(&instlist);
 
     // Simple optimization pass
-    peephole(instlist, instenum);
+    peephole(&instlist);
 
     // Extract sequences of 7 push/pop
-    vmextract(instlist);
+    vmextract(&instlist);
 
     // Output them
-    outputvm(ctxswh);
+    outputvm(&ctxswh);
 
     // If you want more CFG building, you can do it here
     // e.g.,
-    // CFG cfg(instlist);
+    // CFG cfg(&instlist);
     // cfg.checkConsist();
     // cfg.showCFG();
     // cfg.outputDot();
