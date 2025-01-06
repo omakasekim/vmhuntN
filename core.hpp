@@ -27,6 +27,7 @@ enum Register {
     RSI, RDI, RSP, RBP,
     R8, R9, R10, R11,
     R12, R13, R14, R15,
+    RIP, // Instruction Pointer
 
     // 32-bit General Purpose Registers
     EAX, EBX, ECX, EDX,
@@ -84,6 +85,7 @@ inline string reg2string(Register reg) {
     case R13: return "r13";
     case R14: return "r14";
     case R15: return "r15";
+    case RIP: return "rip";
 
     case EAX: return "eax";
     case EBX: return "ebx";
@@ -232,6 +234,7 @@ inline Register reg2enum(const string &regStr) {
     if (reg == "r13") return Register::R13;
     if (reg == "r14") return Register::R14;
     if (reg == "r15") return Register::R15;
+    if (reg == "rip") return Register::RIP;
 
     if (reg == "eax") return Register::EAX;
     if (reg == "ebx") return Register::EBX;
@@ -321,16 +324,16 @@ inline Register reg2enum(const string &regStr) {
 
 // An operand as parsed from assembly
 struct Operand {
-    enum Type { IMM, REG, MEM };
+    enum Type { IMM, REG, MEM, UNK };
     Type ty;             // Immediate, register, or memory
     int tag;             // Extra tag (for addressing modes)
-    int bit;             // Operand size in bits (e.g., 8, 16, 32, 64)
+    int bit;             // Operand size in bits (e.g., 8, 16, 32, 64, 128, 256, 512)
     bool issegaddr;      // True if it uses a segment register (e.g., fs:[...])
     string segreg;       // Segment register name if issegaddr == true
     string field[5];     // Fields for operand decoding (e.g., reg name, displacement, etc.)
 
     // Constructors
-    Operand() : ty(IMM), tag(0), bit(0), issegaddr(false), segreg(""), field{"", "", "", "", ""} {}
+    Operand() : ty(UNK), tag(0), bit(0), issegaddr(false), segreg(""), field{"", "", "", "", ""} {}
     Operand(Type type, int bitSize, const string& fld0)
         : ty(type), tag(0), bit(bitSize), issegaddr(false), segreg(""), field{fld0, "", "", "", ""} {}
 };
@@ -355,7 +358,7 @@ struct Inst {
     string addr;           // Instruction address (string form)
     uint64_t addrn;        // Instruction address as numeric form
     string assembly;       // Full assembly text
-    int opc;               // Opcode (numeric)
+    int opc;               // Opcode (numeric) - to be implemented
     string opcstr;         // Opcode string
     vector<string> oprs;   // Raw operands (string)
     int oprnum;            // Number of operands
