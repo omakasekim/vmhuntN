@@ -26,91 +26,101 @@ set<string> skipinst = {
     "test","jmp","jz","jbe","jo","jno","js","jns","je","jne",
     "jnz","jb","jnae","jc","jnb","jae","jnc","jna","ja","jnbe","jl",
     "jnge","jge","jnl","jle","jng","jg","jnle","jp","jpe","jnp","jpo",
-    "jcxz","jecxz", "ret", "cmp", "call"
+    "jcxz","jecxz","ret","cmp","call"
 };
 
 /*
  * Build fine-grained parameters (src/dst) for each instruction in L.
+ * 
+ * This uses operand info (op0->ty, op0->field[0], etc.) plus
+ * read/write addresses (raddr/waddr) to figure out what's being read/written.
  */
 int buildParameter(list<Inst> &L)
 {
-    for (auto it = L.begin(); it != L.end(); ++it) {
+    for (auto &ins : L) {
         // If the opcode is in skipinst, do nothing for it
-        if (skipinst.find(it->opcstr) != skipinst.end()) {
+        if (skipinst.find(ins.opcstr) != skipinst.end()) {
             continue;
         }
 
-        switch (it->oprnum) {
+        switch (ins.oprnum) {
         case 0:
-            // No operands, nothing to do
+            // No operands => nothing to do
             break;
 
         case 1:
         {
-            Operand *op0 = it->oprd[0];
+            Operand *op0 = ins.oprd[0];
             int nbyte = 0;
 
-            if (it->opcstr == "push") {
+            if (ins.opcstr == "push") {
+                // On a 64-bit system, pushing is 8 bytes
+                nbyte = (op0->bit / 8 > 0) ? (op0->bit / 8) : 8;  
+                // But if it's truly 64-bit push, override to 8 if needed
+                nbyte = 8;  
+
                 if (op0->ty == Operand::IMM) {
-                    it->addsrc(Parameter::IMM, op0->field[0]);
-                    // Example: push imm writes 4 bytes to the stack (for 32-bit push).
-                    // For 64-bit, you might push 8 bytes. Adjust if needed.
-                    AddrRange ar(it->waddr, it->waddr + 3);
-                    it->adddst(Parameter::MEM, ar);
+                    ins.addsrc(Parameter::IMM, op0->field[0]);
+                    AddrRange ar(ins.waddr, ins.waddr + nbyte - 1);
+                    ins.adddst(Parameter::MEM, ar);
                 }
                 else if (op0->ty == Operand::REG) {
-                    it->addsrc(Parameter::REG, op0->field[0]);
-                    nbyte = op0->bit / 8;
-                    AddrRange ar(it->waddr, it->waddr + nbyte - 1);
-                    it->adddst(Parameter::MEM, ar);
+                    ins.addsrc(Parameter::REG, op0->field[0]);
+                    AddrRange ar(ins.waddr, ins.waddr + nbyte - 1);
+                    ins.adddst(Parameter::MEM, ar);
                 }
                 else if (op0->ty == Operand::MEM) {
                     nbyte = op0->bit / 8;
-                    AddrRange rar(it->raddr, it->raddr + nbyte - 1);
-                    it->addsrc(Parameter::MEM, rar);
-                    AddrRange war(it->waddr, it->waddr + nbyte - 1);
-                    it->adddst(Parameter::MEM, war);
+                    if (nbyte == 0) nbyte = 8;  // fallback
+                    AddrRange rar(ins.raddr, ins.raddr + nbyte - 1);
+                    ins.addsrc(Parameter::MEM, rar);
+
+                    AddrRange war(ins.waddr, ins.waddr + nbyte - 1);
+                    ins.adddst(Parameter::MEM, war);
                 }
                 else {
-                    cout << "push error: operand is not IMM, REG or MEM!" << endl;
+                    cerr << "[push error] Unknown operand type for op0!\n";
                     return 1;
                 }
             }
-            else if (it->opcstr == "pop") {
+            else if (ins.opcstr == "pop") {
+                // On 64-bit, pop also fetches 8 bytes
+                nbyte = (op0->bit / 8 > 0) ? (op0->bit / 8) : 8;  
+                nbyte = 8;  
+
                 if (op0->ty == Operand::REG) {
-                    nbyte = op0->bit / 8;
-                    AddrRange rar(it->raddr, it->raddr + nbyte - 1);
-                    it->addsrc(Parameter::MEM, rar);
-                    it->adddst(Parameter::REG, op0->field[0]);
+                    AddrRange rar(ins.raddr, ins.raddr + nbyte - 1);
+                    ins.addsrc(Parameter::MEM, rar);
+                    ins.adddst(Parameter::REG, op0->field[0]);
                 }
                 else if (op0->ty == Operand::MEM) {
-                    nbyte = op0->bit / 8;
-                    AddrRange rar(it->raddr, it->raddr + nbyte - 1);
-                    it->addsrc(Parameter::MEM, rar);
-                    AddrRange war(it->waddr, it->waddr + nbyte - 1);
-                    it->adddst(Parameter::MEM, war);
+                    AddrRange rar(ins.raddr, ins.raddr + nbyte - 1);
+                    ins.addsrc(Parameter::MEM, rar);
+                    AddrRange war(ins.waddr, ins.waddr + nbyte - 1);
+                    ins.adddst(Parameter::MEM, war);
                 }
                 else {
-                    cout << "pop error: the operand is not REG or MEM!" << endl;
+                    cerr << "[pop error] op0 is not REG or MEM!\n";
                     return 1;
                 }
             }
             else {
-                // e.g., inc [mem], dec reg, etc. (single-operand instructions)
+                // Single-operand instructions: inc [mem], dec reg, neg reg, etc.
                 if (op0->ty == Operand::REG) {
-                    it->addsrc(Parameter::REG, op0->field[0]);
-                    it->adddst(Parameter::REG, op0->field[0]);
+                    ins.addsrc(Parameter::REG, op0->field[0]);
+                    ins.adddst(Parameter::REG, op0->field[0]);
                 }
                 else if (op0->ty == Operand::MEM) {
                     nbyte = op0->bit / 8;
-                    AddrRange rar(it->raddr, it->raddr + nbyte - 1);
-                    it->addsrc(Parameter::MEM, rar);
-                    AddrRange war(it->waddr, it->waddr + nbyte - 1);
-                    it->adddst(Parameter::MEM, war);
+                    if (nbyte == 0) nbyte = 8;
+                    AddrRange rar(ins.raddr, ins.raddr + nbyte - 1);
+                    ins.addsrc(Parameter::MEM, rar);
+                    AddrRange war(ins.waddr, ins.waddr + nbyte - 1);
+                    ins.adddst(Parameter::MEM, war);
                 }
                 else {
-                    cout << "[Error] Instruction " << it->id
-                         << ": Unknown 1-op form!"  << endl;
+                    cerr << "[Error] Instruction " << ins.id
+                         << ": Unknown 1-op form for " << ins.opcstr << endl;
                     return 1;
                 }
             }
@@ -119,136 +129,146 @@ int buildParameter(list<Inst> &L)
 
         case 2:
         {
-            Operand *op0 = it->oprd[0];
-            Operand *op1 = it->oprd[1];
+            Operand *op0 = ins.oprd[0];
+            Operand *op1 = ins.oprd[1];
             int nbyte = 0;
 
-            // e.g., mov, movzx, etc.
-            if (it->opcstr == "mov" || it->opcstr == "movzx") {
+            // Common instructions: mov, movzx, etc.
+            if (ins.opcstr == "mov" || ins.opcstr == "movzx") {
                 if (op0->ty == Operand::REG) {
                     if (op1->ty == Operand::IMM) {
-                        it->addsrc(Parameter::IMM, op1->field[0]);
-                        it->adddst(Parameter::REG, op0->field[0]);
+                        ins.addsrc(Parameter::IMM, op1->field[0]);
+                        ins.adddst(Parameter::REG, op0->field[0]);
                     }
                     else if (op1->ty == Operand::REG) {
-                        it->addsrc(Parameter::REG, op1->field[0]);
-                        it->adddst(Parameter::REG, op0->field[0]);
+                        ins.addsrc(Parameter::REG, op1->field[0]);
+                        ins.adddst(Parameter::REG, op0->field[0]);
                     }
                     else if (op1->ty == Operand::MEM) {
                         nbyte = op1->bit / 8;
-                        AddrRange rar(it->raddr, it->raddr + nbyte - 1);
-                        it->addsrc(Parameter::MEM, rar);
-                        it->adddst(Parameter::REG, op0->field[0]);
+                        if (nbyte == 0) nbyte = 8;
+                        AddrRange rar(ins.raddr, ins.raddr + nbyte - 1);
+                        ins.addsrc(Parameter::MEM, rar);
+                        ins.adddst(Parameter::REG, op0->field[0]);
                     }
                     else {
-                        cout << "mov error: op0=REG, but op1 is not IMM/REG/MEM" << endl;
+                        cerr << "[mov error] op0=REG, op1 not IMM/REG/MEM\n";
                         return 1;
                     }
                 }
                 else if (op0->ty == Operand::MEM) {
+                    nbyte = op0->bit / 8;
+                    if (nbyte == 0) nbyte = 8;
+
                     if (op1->ty == Operand::IMM) {
-                        it->addsrc(Parameter::IMM, op1->field[0]);
-                        nbyte = op0->bit / 8;
-                        AddrRange war(it->waddr, it->waddr + nbyte - 1);
-                        it->adddst(Parameter::MEM, war);
+                        ins.addsrc(Parameter::IMM, op1->field[0]);
+                        AddrRange war(ins.waddr, ins.waddr + nbyte - 1);
+                        ins.adddst(Parameter::MEM, war);
                     }
                     else if (op1->ty == Operand::REG) {
-                        it->addsrc(Parameter::REG, op1->field[0]);
-                        nbyte = op0->bit / 8;
-                        AddrRange war(it->waddr, it->waddr + nbyte - 1);
-                        it->adddst(Parameter::MEM, war);
+                        ins.addsrc(Parameter::REG, op1->field[0]);
+                        AddrRange war(ins.waddr, ins.waddr + nbyte - 1);
+                        ins.adddst(Parameter::MEM, war);
                     }
                     else {
-                        cout << "mov error: op0=MEM, op1 not IMM/REG" << endl;
+                        cerr << "[mov error] op0=MEM, op1 not IMM/REG\n";
                         return 1;
                     }
                 }
                 else {
-                    cout << "mov error: op0 is not MEM or REG." << endl;
+                    cerr << "[mov error] op0 is not MEM or REG\n";
                     return 1;
                 }
             }
-            else if (it->opcstr == "lea") {
-                // e.g., lea reg, [reg + reg*scale + disp]
+            else if (ins.opcstr == "lea") {
+                // e.g. lea reg, [mem]
                 if (op0->ty != Operand::REG || op1->ty != Operand::MEM) {
-                    cout << "lea format error!" << endl;
-                }
-                switch (op1->tag) {
-                case 5:
-                    // Example: op1->field[0] = base reg, field[1] = index reg
-                    it->addsrc(Parameter::REG, op1->field[0]);
-                    it->addsrc(Parameter::REG, op1->field[1]);
-                    it->adddst(Parameter::REG, op0->field[0]);
+                    cerr << "[lea error] op0 must be REG, op1 must be MEM\n";
                     break;
+                }
+                // For simplicity, only handle a few tags, or handle them all if your code does
+                switch (op1->tag) {
+                case 5: // e.g. rax+rbx*2
+                    ins.addsrc(Parameter::REG, op1->field[0]); // base
+                    ins.addsrc(Parameter::REG, op1->field[1]); // index
+                    // The result goes into op0
+                    ins.adddst(Parameter::REG, op0->field[0]);
+                    break;
+                // Add other cases (tag 3,4,6,7) if needed
                 default:
-                    cerr << "lea error: unhandled address pattern or tag." << endl;
+                    cerr << "[lea error] unhandled address tag: " << op1->tag << endl;
                     break;
                 }
             }
-            else if (it->opcstr == "xchg") {
-                // xchg can have two destinations (op0 and op1) and two sources
+            else if (ins.opcstr == "xchg") {
+                // xchg => each operand is both src and dst
+                // We'll store them as separate sets: main (src/dst) vs. second (src2/dst2)
                 if (op1->ty == Operand::REG) {
-                    it->addsrc(Parameter::REG, op1->field[0]);
-                    it->adddst2(Parameter::REG, op1->field[0]);
+                    ins.addsrc(Parameter::REG, op1->field[0]);
+                    ins.adddst2(Parameter::REG, op1->field[0]);
                 }
                 else if (op1->ty == Operand::MEM) {
                     nbyte = op1->bit / 8;
-                    AddrRange ar(it->raddr, it->raddr + nbyte - 1);
-                    it->addsrc(Parameter::MEM, ar);
-                    it->adddst2(Parameter::MEM, ar);
+                    if (nbyte == 0) nbyte = 8;
+                    AddrRange ar(ins.raddr, ins.raddr + nbyte - 1);
+                    ins.addsrc(Parameter::MEM, ar);
+                    ins.adddst2(Parameter::MEM, ar);
                 }
                 else {
-                    cout << "xchg error: op1 is not REG or MEM." << endl;
+                    cerr << "[xchg error] op1 is not REG or MEM\n";
                     return 1;
                 }
 
                 if (op0->ty == Operand::REG) {
-                    it->addsrc2(Parameter::REG, op0->field[0]);
-                    it->adddst(Parameter::REG, op0->field[0]);
+                    ins.addsrc2(Parameter::REG, op0->field[0]);
+                    ins.adddst(Parameter::REG, op0->field[0]);
                 }
                 else if (op0->ty == Operand::MEM) {
                     nbyte = op0->bit / 8;
-                    AddrRange ar(it->raddr, it->raddr + nbyte - 1);
-                    it->addsrc2(Parameter::MEM, ar);
-                    it->adddst(Parameter::MEM, ar);
+                    if (nbyte == 0) nbyte = 8;
+                    AddrRange ar(ins.raddr, ins.raddr + nbyte - 1);
+                    ins.addsrc2(Parameter::MEM, ar);
+                    ins.adddst(Parameter::MEM, ar);
                 }
                 else {
-                    cout << "xchg error: op0 is not REG or MEM." << endl;
+                    cerr << "[xchg error] op0 is not REG or MEM\n";
                     return 1;
                 }
             }
             else {
-                // "other" 2-op instructions, e.g. add reg, imm / add mem, reg, etc.
-                // handle the second operand first (source)
+                // Generic 2-operand instruction (like add, sub, and, or, etc.)
+                // 1) handle second operand as source
                 if (op1->ty == Operand::IMM) {
-                    it->addsrc(Parameter::IMM, op1->field[0]);
+                    ins.addsrc(Parameter::IMM, op1->field[0]);
                 }
                 else if (op1->ty == Operand::REG) {
-                    it->addsrc(Parameter::REG, op1->field[0]);
+                    ins.addsrc(Parameter::REG, op1->field[0]);
                 }
                 else if (op1->ty == Operand::MEM) {
                     nbyte = op1->bit / 8;
-                    AddrRange rar1(it->raddr, it->raddr + nbyte - 1);
-                    it->addsrc(Parameter::MEM, rar1);
+                    if (nbyte == 0) nbyte = 8;
+                    AddrRange rar1(ins.raddr, ins.raddr + nbyte - 1);
+                    ins.addsrc(Parameter::MEM, rar1);
                 }
                 else {
-                    cout << "2-op error: op1 not IMM/REG/MEM." << endl;
+                    cerr << "[2-op error] op1 not IMM/REG/MEM\n";
                     return 1;
                 }
 
-                // handle the first operand (destination, also can be source)
+                // 2) handle first operand as source+dest
                 if (op0->ty == Operand::REG) {
-                    it->addsrc(Parameter::REG, op0->field[0]);
-                    it->adddst(Parameter::REG, op0->field[0]);
+                    ins.addsrc(Parameter::REG, op0->field[0]);
+                    ins.adddst(Parameter::REG, op0->field[0]);
                 }
                 else if (op0->ty == Operand::MEM) {
                     nbyte = op0->bit / 8;
-                    AddrRange rar2(it->raddr, it->raddr + nbyte - 1);
-                    it->addsrc(Parameter::MEM, rar2);
-                    it->adddst(Parameter::MEM, rar2);
+                    if (nbyte == 0) nbyte = 8;
+                    AddrRange rar2(ins.raddr, ins.raddr + nbyte - 1);
+                    ins.addsrc(Parameter::MEM, rar2);
+                    ins.adddst(Parameter::MEM, rar2);
                 }
                 else {
-                    cout << "2-op error: op0 not REG or MEM." << endl;
+                    cerr << "[2-op error] op0 not REG or MEM\n";
                     return 1;
                 }
             }
@@ -257,31 +277,32 @@ int buildParameter(list<Inst> &L)
 
         case 3:
         {
-            // e.g. imul reg, reg, imm
-            Operand *op0 = it->oprd[0];
-            Operand *op1 = it->oprd[1];
-            Operand *op2 = it->oprd[2];
+            // Example: imul reg, reg, imm
+            Operand *op0 = ins.oprd[0];
+            Operand *op1 = ins.oprd[1];
+            Operand *op2 = ins.oprd[2];
 
-            if (it->opcstr == "imul" &&
+            if (ins.opcstr == "imul" &&
                 op0->ty == Operand::REG &&
                 op1->ty == Operand::REG &&
                 op2->ty == Operand::IMM)
             {
-                it->addsrc(Parameter::IMM, op2->field[0]);
-                it->addsrc(Parameter::REG, op1->field[0]);
-                it->addsrc(Parameter::REG, op0->field[0]);
-                // The result presumably goes into op0->REG as well
-                // (If that's how your imul is defined.)
+                ins.addsrc(Parameter::IMM, op2->field[0]);
+                ins.addsrc(Parameter::REG, op1->field[0]);
+                ins.addsrc(Parameter::REG, op0->field[0]);
+                // The result presumably goes into op0->REG as well.
+                ins.adddst(Parameter::REG, op0->field[0]);
             }
             else {
-                cout << "3-op error: not recognized pattern (e.g. 'imul reg, reg, imm')." << endl;
+                cerr << "[3-op error] unrecognized pattern, e.g. 'imul reg, reg, imm'\n";
                 return 1;
             }
             break;
         }
 
         default:
-            cout << "error: instruction has more than 3 operands or unknown form." << endl;
+            cerr << "[error] instruction has " << ins.oprnum 
+                 << " operands (more than 3?) or unknown form\n";
             return 1;
         }
     }
@@ -294,48 +315,39 @@ int buildParameter(list<Inst> &L)
  */
 void printInstParameter(list<Inst> &L)
 {
-    for (auto it = L.begin(); it != L.end(); ++it) {
-        cout << it->id << " " << it->addr << " " << it->assembly << "\t";
+    for (auto &ins : L) {
+        cout << ins.id << " " << ins.addr << " " << ins.assembly << "\t";
         cout << "src: ";
 
         // Print src parameters
-        for (size_t i = 0; i < it->src.size(); i++) {
-            Parameter &p = it->src[i];
+        for (auto &p : ins.src) {
             if (p.ty == Parameter::IMM) {
-                cout << "(IMM ";
-                printf("0x%llx) ", (unsigned long long)p.idx);
+                cout << "(IMM 0x" << std::hex << p.idx << std::dec << ") ";
             }
             else if (p.ty == Parameter::REG) {
-                cout << "(REG " << reg2string(p.reg)
-                     << p.idx << ") ";
+                cout << "(REG " << reg2string(p.reg) << p.idx << ") ";
             }
             else if (p.ty == Parameter::MEM) {
-                cout << "(MEM ";
-                printf("0x%llx) ", (unsigned long long)p.idx);
+                cout << "(MEM 0x" << std::hex << p.idx << std::dec << ") ";
             }
             else {
-                cout << "[Error] Unknown src Parameter type!\n";
+                cout << "[Error] Unknown src Parameter type! ";
             }
         }
 
         cout << ", dst: ";
-        // Print dst parameters
-        for (size_t i = 0; i < it->dst.size(); i++) {
-            Parameter &p = it->dst[i];
+        for (auto &p : ins.dst) {
             if (p.ty == Parameter::IMM) {
-                cout << "(IMM ";
-                printf("0x%llx) ", (unsigned long long)p.idx);
+                cout << "(IMM 0x" << std::hex << p.idx << std::dec << ") ";
             }
             else if (p.ty == Parameter::REG) {
-                cout << "(REG " << reg2string(p.reg)
-                     << p.idx << ") ";
+                cout << "(REG " << reg2string(p.reg) << p.idx << ") ";
             }
             else if (p.ty == Parameter::MEM) {
-                cout << "(MEM ";
-                printf("0x%llx) ", (unsigned long long)p.idx);
+                cout << "(MEM 0x" << std::hex << p.idx << std::dec << ") ";
             }
             else {
-                cout << "[Error] Unknown dst Parameter type!\n";
+                cout << "[Error] Unknown dst Parameter type! ";
             }
         }
         cout << endl;
@@ -353,50 +365,61 @@ int backslice(list<Inst> &L)
     // 'sl' is the final sliced list of instructions
     list<Inst> sl;
 
-    // Start from the last instruction's sources
-    auto rit = L.rbegin();
-    for (size_t i = 0; i < rit->src.size(); i++) {
-        wl.insert(rit->src[i]);
+    // Start from the last instruction
+    if (L.empty()) {
+        cout << "[backslice] No instructions in list!\n";
+        return 0;
     }
+    auto rit = L.rbegin();
+    // Add all its src parameters to the worklist
+    for (auto &param : rit->src) {
+        wl.insert(param);
+    }
+    // Also consider xchg's src2 if relevant
+    for (auto &param : rit->src2) {
+        wl.insert(param);
+    }
+
+    // Put that last instruction in the sliced list
     sl.push_front(*rit);
     ++rit;
 
     // Walk instructions in reverse
     while (rit != L.rend()) {
-        bool isdep1 = false;
-        bool isdep2 = false; // for xchg’s second set of destinations, if any
+        bool isdepMain = false;
+        bool isdepXchgSecond = false; // for xchg’s second set of dst2
 
-        // If no dst, skip
-        if (rit->dst.empty()) {
-            // do nothing
+        if (rit->dst.empty() && rit->dst2.empty()) {
+            // No destinations => not data dependent
         }
         else if (rit->opcstr == "xchg") {
-            // xchg can have dst and dst2
             // Check main dst
             for (auto &dstParam : rit->dst) {
-                auto sit1 = wl.find(dstParam);
-                if (sit1 != wl.end()) {
-                    isdep1 = true;
-                    wl.erase(sit1);
+                auto found = wl.find(dstParam);
+                if (found != wl.end()) {
+                    isdepMain = true;
+                    wl.erase(found);
                 }
             }
             // Check secondary dst2
             for (auto &dstParam2 : rit->dst2) {
-                auto sit2 = wl.find(dstParam2);
-                if (sit2 != wl.end()) {
-                    isdep2 = true;
-                    wl.erase(sit2);
+                auto found2 = wl.find(dstParam2);
+                if (found2 != wl.end()) {
+                    isdepXchgSecond = true;
+                    wl.erase(found2);
                 }
             }
             // If we depend on the main dst
-            if (isdep1) {
+            if (isdepMain) {
+                // push src2 into worklist
                 for (auto &src2Param : rit->src2) {
                     wl.insert(src2Param);
                 }
                 sl.push_front(*rit);
             }
             // If we depend on the second dst
-            if (isdep2) {
+            if (isdepXchgSecond) {
+                // push main src into worklist
                 for (auto &srcParam : rit->src) {
                     wl.insert(srcParam);
                 }
@@ -404,19 +427,26 @@ int backslice(list<Inst> &L)
             }
         }
         else {
-            // Regular single-dst or multi-dst but not xchg
+            // Normal single-dst or multi-dst instructions
+            bool dependent = false;
             for (auto &dstParam : rit->dst) {
-                auto sit = wl.find(dstParam);
-                if (sit != wl.end()) {
-                    isdep1 = true;
-                    wl.erase(sit);
+                auto found = wl.find(dstParam);
+                if (found != wl.end()) {
+                    dependent = true;
+                    wl.erase(found);
                 }
             }
-            if (isdep1) {
+            if (dependent) {
                 // Insert non-IMM sources into the worklist
                 for (auto &srcParam : rit->src) {
                     if (!srcParam.isIMM()) {
                         wl.insert(srcParam);
+                    }
+                }
+                // Possibly also handle src2 if relevant:
+                for (auto &src2Param : rit->src2) {
+                    if (!src2Param.isIMM()) {
+                        wl.insert(src2Param);
                     }
                 }
                 sl.push_front(*rit);
@@ -426,12 +456,16 @@ int backslice(list<Inst> &L)
     }
 
     // Print any leftover parameters in the working list
-    for (auto &p : wl) {
-        p.show();  // Make sure show() prints in 64-bit format if needed
+    if (!wl.empty()) {
+        cout << "\n[backslice] Leftover parameters in WL:\n";
+        for (auto &p : wl) {
+            p.show();
+        }
+        cout << endl;
     }
-    cout << endl;
 
     // Print the sliced instructions
+    cout << "\n[backslice] Final Sliced Instructions:\n";
     printInstParameter(sl);
 
     // Write the slices out to separate files in your custom format
@@ -441,33 +475,36 @@ int backslice(list<Inst> &L)
     return 0;
 }
 
-/*
- * MAIN
- */
 int main(int argc, char **argv)
 {
     if (argc != 2) {
-        fprintf(stderr, "usage: %s <tracefile>\n", argv[0]);
+        cerr << "Usage: " << argv[0] << " <tracefile>\n";
         return 1;
     }
 
     // Open and parse the trace
     ifstream infile(argv[1]);
     if (!infile.is_open()) {
-        fprintf(stderr, "Open file error!\n");
+        cerr << "[Error] Cannot open file: " << argv[1] << endl;
         return 1;
     }
     parseTrace(&infile, &instlist);
     infile.close();
 
-    // Parse operands from strings to structured Operands
+    // Convert string operands into structured 'Operand'
     parseOperand(instlist.begin(), instlist.end());
 
-    // Build fine-grained parameter sets
-    buildParameter(instlist);
+    // Build the fine-grained parameter sets (src/dst)
+    if (buildParameter(instlist) != 0) {
+        cerr << "[Error] buildParameter failed.\n";
+        return 1;
+    }
 
-    // Perform a backward slice
-    backslice(instlist);
+    // Perform a backward slice from the last instruction
+    if (backslice(instlist) != 0) {
+        cerr << "[Error] backslice encountered an issue.\n";
+        return 1;
+    }
 
     return 0;
 }
