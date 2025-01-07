@@ -299,7 +299,43 @@ int buildParameter(list<Inst> &L)
             }
             break;
         }
+        //  need to deal with 4 like vpadd and mul32 something like that
+        case 4:
+        {
+            Operand *op0 = ins.oprd[0];
+            Operand *op1 = ins.oprd[1];
+            Operand *op2 = ins.oprd[2];
+            Operand *op3 = ins.oprd[3];
+            int nbyte = 0;
 
+            if (ins.opcstr == "vpaddd") {
+                // Handle vpaddd instruction
+                if (op0->ty == OperandType::REG && op1->ty == OperandType::REG && op2->ty == OperandType::REG) {
+                    ins.addsrc(Parameter::REG, op1->field[0]);
+                    ins.addsrc(Parameter::REG, op2->field[0]);
+                    ins.adddst(Parameter::REG, op0->field[0]);
+                } else {
+                    cerr << "[vpaddd error] Invalid operand types\n";
+                    return 1;
+                }
+            } else if (ins.opcstr == "vmovdqu32") {
+                // Handle vmovdqu32 instruction
+                if (op0->ty == OperandType::REG && op1->ty == OperandType::MEM) {
+                    nbyte = op1->bit / 8;
+                    if (nbyte == 0) nbyte = 32;  // Default to 32 bytes for 256-bit registers
+                    AddrRange rar(ins.raddr, ins.raddr + nbyte - 1);
+                    ins.addsrc(Parameter::MEM, rar);
+                    ins.adddst(Parameter::REG, op0->field[0]);
+                } else {
+                    cerr << "[vmovdqu32 error] Invalid operand types\n";
+                    return 1;
+                }
+            } else {
+                cerr << "[4-op error] Unrecognized 4-op instruction\n";
+                return 1;
+            }
+            break;
+        }
         default:
             cerr << "[error] instruction has " << ins.oprnum 
                  << " operands (more than 3?) or unknown form\n";

@@ -2,6 +2,7 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <set>
 
 using namespace std;
 
@@ -93,8 +94,11 @@ void Parameter::show() const {
 
 // Helper functions to identify register widths
 bool isReg64(string reg) {
-    return reg == "rax" || reg == "rbx" || reg == "rcx" || reg == "rdx" ||
-           reg == "rsi" || reg == "rdi" || reg == "rsp" || reg == "rbp";
+    static const set<string> regs64 = {
+        "rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rsp", "rbp",
+        "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15"
+    };
+    return regs64.find(reg) != regs64.end();
 }
 
 bool isReg32(string reg) {
@@ -114,6 +118,16 @@ bool isReg8(string reg) {
 
 // Return Register enum + fill 'idx' with sub-parts (for partial regs)
 Register getRegParameter(string regname, vector<int>& idx) {
+    // Remove R8-R15 handling
+    // if (regname.substr(0,2) == "r8") return R8;
+    // if (regname.substr(0,2) == "r9") return R9;
+    // if (regname.substr(0,3) == "r10") return R10;
+    // if (regname.substr(0,3) == "r11") return R11;
+    // if (regname.substr(0,3) == "r12") return R12;
+    // if (regname.substr(0,3) == "r13") return R13;
+    // if (regname.substr(0,3) == "r14") return R14;
+    // if (regname.substr(0,3) == "r15") return R15;
+    
     if (isReg64(regname)) {
         idx.push_back(0);
         idx.push_back(1);

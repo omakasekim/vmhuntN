@@ -30,6 +30,7 @@ enum Register {
     UNK,                        // Unknown register
 };
 enum class OperandType {IMM, REG, MEM, UNK} ;
+
 // An operand as parsed from assembly
 struct Operand {
     //enum OperandType { IMM, REG, MEM,UNK };
@@ -66,7 +67,7 @@ struct Inst {
     string opcstr;         // Opcode (string)
     vector<string> oprs;   // Raw operands (string)
     int oprnum;            // Number of operands
-    Operand *oprd[3];      // Parsed operand structures
+    Operand *oprd[4];      // Parsed operand structures
     ADDR64 ctxreg[8];      // Context registers (64-bit)
     ADDR64 raddr;          // Memory read address
     ADDR64 waddr;          // Memory write address
