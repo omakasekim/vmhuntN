@@ -266,6 +266,114 @@ void peephole(list<Inst>* L)
     }
 }
 
+void peephole(list<Inst>* L)
+{
+    auto it = L->begin();
+    while (it != L->end()) {
+        auto nxt = std::next(it);
+        if (nxt == L->end()) {
+            break;
+        }
+        bool erased = false;
+
+        // Check pairs (push/pop, add/sub, inc/dec)
+        if ((it->opcstr == "push" && nxt->opcstr == "pop"
+             && !it->oprs.empty() && !nxt->oprs.empty()
+             && it->oprs[0] == nxt->oprs[0]) )
+        {
+            nxt = L->erase(nxt);
+            it  = L->erase(it);
+            erased = true;
+            if (it != L->begin() && it != L->end()) {
+                --it;
+            }
+        }
+        else if ((it->opcstr == "pop" && nxt->opcstr == "push"
+                  && !it->oprs.empty() && !nxt->oprs.empty()
+                  && it->oprs[0] == nxt->oprs[0]) )
+        {
+            nxt = L->erase(nxt);
+            it  = L->erase(it);
+            erased = true;
+            if (it != L->begin() && it != L->end()) {
+                --it;
+            }
+        }
+        else if ((it->opcstr == "add" && nxt->opcstr == "sub"
+                  && it->oprs.size() == 2 && nxt->oprs.size() == 2
+                  && it->oprs[0] == nxt->oprs[0]
+                  && it->oprs[1] == nxt->oprs[1]) )
+        {
+            nxt = L->erase(nxt);
+            it  = L->erase(it);
+            erased = true;
+            if (it != L->begin() && it != L->end()) {
+                --it;
+            }
+        }
+        else if ((it->opcstr == "sub" && nxt->opcstr == "add"
+                  && it->oprs.size() == 2 && nxt->oprs.size() == 2
+                  && it->oprs[0] == nxt->oprs[0]
+                  && it->oprs[1] == nxt->oprs[1]) )
+        {
+            nxt = L->erase(nxt);
+            it  = L->erase(it);
+            erased = true;
+            if (it != L->begin() && it != L->end()) {
+                --it;
+            }
+        }
+        else if ((it->opcstr == "inc" && nxt->opcstr == "dec"
+                  && !it->oprs.empty() && !nxt->oprs.empty()
+                  && it->oprs[0] == nxt->oprs[0]) )
+        {
+            nxt = L->erase(nxt);
+            it  = L->erase(it);
+            erased = true;
+            if (it != L->begin() && it != L->end()) {
+                --it;
+            }
+        }
+        else if ((it->opcstr == "dec" && nxt->opcstr == "inc"
+                  && !it->oprs.empty() && !nxt->oprs.empty()
+                  && it->oprs[0] == nxt->oprs[0]) )
+        {
+            nxt = L->erase(nxt);
+            it  = L->erase(it);
+            erased = true;
+            if (it != L->begin() && it != L->end()) {
+                --it;
+            }
+        }
+
+        // Check for 7 consecutive push instructions
+        else if (std::distance(it, L->end()) >= 7 && chkpush(it, std::next(it, 7))) {
+            auto it7 = std::next(it, 7);  // Iterator to the 7th instruction
+            cout << "[peephole] Found 7 consecutive pushes from "
+                 << it->id << " to " << std::prev(it7)->id << endl;
+            it = L->erase(it, it7);       // Remove the 7 push instructions
+            erased = true;
+        }
+
+        // Check for 7 consecutive pop instructions
+        else if (std::distance(it, L->end()) >= 7 && chkpop(it, std::next(it, 7))) {
+            auto it7 = std::next(it, 7);  // Iterator to the 7th instruction
+            cout << "[peephole] Found 7 consecutive pops from "
+                 << it->id << " to " << std::prev(it7)->id << endl;
+            it = L->erase(it, it7);       // Remove the 7 pop instructions
+            erased = true;
+        }
+
+        if (!erased) {
+            ++it;
+        }
+    }
+}
+
+
+
+
+
 /*
  * A structure capturing a block of instructions (push or pop) we consider a context save/restore.
  */
